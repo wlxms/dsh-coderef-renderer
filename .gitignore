@@ -1,0 +1,6 @@
+# Local build artifacts and offline dependency staging (prototype only).
+vendor/
+lib/impl.js
+tmp/
+lib/client.mini.js
+

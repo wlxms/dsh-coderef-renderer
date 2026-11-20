@@ -1,0 +1,12 @@
+{
+  "id": "local/dsh-coderef-renderer",
+  "version": "0.1.0",
+  "main": "./lib/index.js",
+  "description": "原型：影子接管 assistant-step，用 fork 的原生 MarkdownText 管线渲染（mdast/流式增量/原生 CSS），在 Markdown 节点层把 inline code、加粗引用与 coderef: 链接变成可点 chip，复用 dsh-coderef 的 Host 解析与跳转。",
+  "engines": {
+    "dsh": ">=0.1.5-rc.2"
+  },
+  "contributes": {
+    "tools": []
+  }
+}

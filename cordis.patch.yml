@@ -1,0 +1,10 @@
+# dsh-coderef-renderer bundle patch: inserts the renderer plugin row.
+#
+# Client half (exports "./client") shadows conversation.chat.node[assistant-step]
+# at priority -100 and renders the assistant Markdown itself, exposing
+# Markdown-level hooks (inline code / strong / links) that the stock MarkdownText
+# does not expose. It reuses the dsh-coderef Host routes (/coderef/resolve,
+# /coderef/open) for resolution and IDE/sidebar jumps.
+- insert:
+    - id: coderef-renderer
+      name: 'dsh-coderef-renderer'
