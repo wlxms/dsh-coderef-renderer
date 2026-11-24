@@ -16,7 +16,7 @@
  */
 import { Component, createElement, Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { DisclosureRow, IconCopyOutline16, IconFolderOpenOutline16, IconThinkOutline14, LinkIcon, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import { DisclosureRow, IconCopyOutline16, IconFolderOpenOutline16, IconThinkOutline14, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
 import { MarkdownText } from './fork/MarkdownText.tsx'
 import type { MarkdownCommandMentions, MarkdownFileMentions, MarkdownLabels, MarkdownTextMentions, TextMention } from './fork/render.tsx'
 import { STYLES } from './styles.ts'
@@ -113,6 +113,13 @@ function cachedItem(sessionId: string | undefined, cwd: string | undefined, text
   const entry = tokenCache.get(cacheKey(sessionId, cwd, text))
   if (entry === undefined) return undefined
   if (Date.now() - entry.at > TOKEN_TTL_MS) {
+    tokenCache.delete(cacheKey(sessionId, cwd, text))
+    return undefined
+  }
+  // A miss from an early workspace-index build must not latch forever: retry
+  // unresolved/ambiguous tokens on the next pass instead of serving stale
+  // "unresolved" results for five minutes.
+  if (entry.item?.status !== 'linked') {
     tokenCache.delete(cacheKey(sessionId, cwd, text))
     return undefined
   }
@@ -471,7 +478,8 @@ function isInlineCandidate(value: string): boolean {
   if (INLINE_PATH_HINT.test(text) && !/\s/.test(text)) return true
   if (INLINE_IDENTIFIER.test(text)) {
     if (INLINE_BLACKLIST.has(text.toLowerCase())) return false
-    if (text.length < 4) return false
+    if (/^[A-Z][A-Z0-9_]{1,}$/.test(text) && text.length >= 3) return true
+    if (text.length < 3) return false
     if (/[A-Z]/.test(text) || text.includes('.')) return true
   }
   if (text.length > 200 || /^[<{[*#]/.test(text)) return false
@@ -488,6 +496,12 @@ function collectTokens(blocks: any[]): { bold: string[]; inline: string[] } {
   const inline: string[] = []
   const seenBold = new Set<string>()
   const seenInline = new Set<string>()
+  const addInline = (value: string): void => {
+    const text = value.trim()
+    if (seenInline.has(text) || !isInlineCandidate(text)) return
+    seenInline.add(text)
+    inline.push(text)
+  }
   for (const block of Array.isArray(blocks) ? blocks : []) {
     if (block === null || typeof block !== 'object' || block.kind !== 'text' || typeof block.text !== 'string') continue
     CANDIDATE_PATTERN.lastIndex = 0
@@ -500,15 +514,109 @@ function collectTokens(blocks: any[]): { bold: string[]; inline: string[] } {
     }
     const code = /`([^`\n]{2,300})`/g
     while ((match = code.exec(block.text)) !== null) {
-      const value = match[1]!.trim()
-      if (seenInline.has(value) || !isInlineCandidate(value)) continue
-      seenInline.add(value)
-      inline.push(value)
-      if (inline.length >= 80) break
+      addInline(match[1]!)
+      if (inline.length >= 160) break
+    }
+    // Fenced blocks are rendered by the stock Shiki CodeBlock, which has no
+    // mention hook. Collect their identifiers here so the Host resolver can
+    // link them, then decorate the rendered code nodes below.
+    const fence = /```[^\n]*\n([\s\S]*?)```/g
+    while ((match = fence.exec(block.text)) !== null) {
+      const identifiers = match[1]!.match(/[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*/g) ?? []
+      for (const identifier of identifiers) {
+        addInline(identifier)
+        if (identifier.includes('.')) {
+          for (const part of identifier.split('.')) addInline(part)
+        }
+        if (inline.length >= 160) break
+      }
+      if (inline.length >= 160) break
     }
     if (bold.length >= 40) break
   }
   return { bold, inline }
+}
+
+/** Decorate identifiers already rendered by the stock Shiki CodeBlock. */
+function decorateCodeBlocks(
+  root: HTMLElement,
+  textMentions: MarkdownTextMentions,
+  mentions: MarkdownFileMentions,
+  hits: Map<string, any>,
+): void {
+  const blocks = root.querySelectorAll<HTMLElement>('pre code')
+  for (const code of blocks) {
+    const walker = document.createTreeWalker(code, NodeFilter.SHOW_TEXT)
+    const textNodes: Text[] = []
+    let current = walker.nextNode()
+    while (current !== null) {
+      const parent = current.parentElement
+      if (parent !== null && parent.closest('[data-coderef-chip]') === null) textNodes.push(current as Text)
+      current = walker.nextNode()
+    }
+    for (const textNode of textNodes) {
+      const value = textNode.nodeValue ?? ''
+      if (value.length < 2) continue
+      const base = textMentions.match(value).filter(mention => mention.kind !== 'command')
+      const spans: Array<{ start: number; end: number; label: string; title: string; open?: () => void }> = base.map(mention => ({
+        start: mention.start,
+        end: mention.end,
+        label: mention.label,
+        title: mention.title,
+        open: mention.open,
+      }))
+      const covers = (start: number, end: number): boolean => spans.some(span => start < span.end && end > span.start)
+      const tokenPattern = /[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*/g
+      let token: RegExpExecArray | null
+      while ((token = tokenPattern.exec(value)) !== null) {
+        const start = token.index
+        const end = start + token[0].length
+        if (covers(start, end)) continue
+        const mention = mentions.resolve(token[0])
+        if (mention !== undefined && hits.has(token[0])) {
+          spans.push({ start, end, label: mention.label, title: mention.title, open: mention.open })
+          continue
+        }
+        // Dotted chains often appear as `PCM.TryFilterLookInput` in a diagram.
+        // Link the resolvable head/tail segments even when the full chain is
+        // not a symbol in the source index.
+        let offset = 0
+        for (const part of token[0].split('.')) {
+          const partStart = start + offset
+          const partEnd = partStart + part.length
+          offset += part.length + 1
+          if (part.length < 2 || covers(partStart, partEnd) || !hits.has(part)) continue
+          const segment = mentions.resolve(part)
+          if (segment === undefined) continue
+          spans.push({ start: partStart, end: partEnd, label: segment.label, title: segment.title, open: segment.open })
+        }
+      }
+      if (spans.length === 0) continue
+      spans.sort((a, b) => a.start - b.start || b.end - a.end)
+      const fragment = document.createDocumentFragment()
+      let cursor = 0
+      for (const span of spans) {
+        if (span.start < cursor) continue
+        if (span.start > cursor) fragment.appendChild(document.createTextNode(value.slice(cursor, span.start)))
+        const chip = document.createElement('button')
+        chip.type = 'button'
+        chip.className = 'dcr-code-ref'
+        chip.dataset.coderefChip = 'true'
+        chip.title = span.title
+        chip.textContent = value.slice(span.start, span.end)
+        chip.style.cssText = 'display:inline;padding:0;margin:0;border:0;background:none;font:inherit;color:inherit;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;cursor:pointer'
+        chip.addEventListener('click', event => {
+          event.preventDefault()
+          event.stopPropagation()
+          span.open?.()
+        })
+        fragment.appendChild(chip)
+        cursor = span.end
+      }
+      if (cursor < value.length) fragment.appendChild(document.createTextNode(value.slice(cursor)))
+      textNode.parentNode?.replaceChild(fragment, textNode)
+    }
+  }
 }
 
 function formatTitle(hit: any): string {
@@ -888,6 +996,15 @@ function commandDisplayLabel(command: string): string {
   return firstLine.length > 96 ? `${firstLine.slice(0, 93)}…` : firstLine
 }
 
+/** Small local glyph so the footer does not depend on a primitives export. */
+function RefGlyph(props: { kind?: string }): ReactNode {
+  return createElement('span', {
+    className: 'dcr-link-icon',
+    'aria-hidden': 'true',
+    style: { display: 'inline-block', width: '11px', height: '11px', lineHeight: '11px', textAlign: 'center' },
+  }, props.kind === 'url' ? '↗' : '›')
+}
+
 /** Collapsed listing of references that actually appeared in assistant prose. */
 function RefsFooter({ ledger, cwd, props, onContextMenu, onRunCommand }: {
   ledger: any
@@ -932,7 +1049,7 @@ function RefsFooter({ ledger, cwd, props, onContextMenu, onRunCommand }: {
             onClick: () => { void openReference(props, { file: ref.absPath ?? ref.path, line: line ?? 1 }) },
             onContextMenu: (event: any) => { event.preventDefault(); onContextMenu(event, target) },
           },
-          createElement(LinkIcon as any, { kind: 'code', className: 'dcr-link-icon' }),
+          createElement(RefGlyph, { kind: 'code' }),
           label + (line === undefined ? '' : `:${line}`)),
           createElement('span', { className: 'dcr-ref-meta' },
             [sources, ref.occurrences?.length > 1 ? `${ref.occurrences.length} 次` : ''].filter(Boolean).join(' · ')))
@@ -945,7 +1062,7 @@ function RefsFooter({ ledger, cwd, props, onContextMenu, onRunCommand }: {
             if (typeof window !== 'undefined') window.open(ref.url, '_blank', 'noopener,noreferrer')
           },
         },
-        createElement(LinkIcon as any, { kind: 'url', className: 'dcr-link-icon' }),
+        createElement(RefGlyph, { kind: 'url' }),
         ref.title ?? ref.url),
         createElement('span', { className: 'dcr-ref-meta' }, 'web')))) : null,
       commands.length > 0 ? group('commands', '命令', commands.length, commands.map(ref => createElement('div', { key: `c:${ref.command}`, className: 'dcr-ref-item' },
@@ -955,7 +1072,7 @@ function RefsFooter({ ledger, cwd, props, onContextMenu, onRunCommand }: {
           onClick: () => onRunCommand(ref.command),
           className: 'dcr-command-row',
         },
-        createElement(LinkIcon as any, { kind: 'code', className: 'dcr-link-icon' }),
+        createElement(RefGlyph, { kind: 'code' }),
         commandDisplayLabel(ref.command)),
         createElement('span', { className: 'dcr-ref-meta' }, ref.command.length > 96 ? 'terminal · long' : 'terminal')))) : null))
 }
@@ -1076,9 +1193,9 @@ const CoderefRenderer = memo(function CoderefRenderer(props: any): ReactNode {
         // retry a couple of times so later-ready symbols become links too.
         const unresolved = next instanceof Map
           && [...next.values()].some((item: any) => item !== null && typeof item === 'object' && item.status === 'unresolved')
-        if (unresolved && resolveRetry < 2) {
+        if (unresolved && resolveRetry < 4) {
           if (resolveRetryTimer.current !== null) clearTimeout(resolveRetryTimer.current)
-          resolveRetryTimer.current = setTimeout(() => { setResolveRetry(value => value + 1) }, 6000)
+          resolveRetryTimer.current = setTimeout(() => { setResolveRetry(value => value + 1) }, 4000)
         }
       })
       .catch((error: any) => {
@@ -1133,6 +1250,59 @@ const CoderefRenderer = memo(function CoderefRenderer(props: any): ReactNode {
     },
   }), [hits, snippets, props])
 
+  const rootRef = useRef<HTMLDivElement>(null)
+  const textMentionsWithHits = useMemo<MarkdownTextMentions | undefined>(() => {
+    if (textMentions === undefined) return undefined
+    return {
+      match(value: string): TextMention[] {
+        const spans: TextMention[] = [...textMentions.match(value)]
+        const covered = (start: number, end: number): boolean => spans.some(span => start < span.end && end > span.start)
+        const pattern = /[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*/g
+        let token: RegExpExecArray | null
+        while ((token = pattern.exec(value)) !== null) {
+          const start = token.index
+          const end = start + token[0].length
+          if (covered(start, end) || !hits.has(token[0])) continue
+          const mention = mentions.resolve(token[0])
+          if (mention === undefined) continue
+          spans.push({
+            start,
+            end,
+            kind: 'symbol',
+            label: token[0],
+            title: mention.title,
+            file: mention.file,
+            line: mention.line,
+            endLine: mention.endLine,
+            open: mention.open,
+          })
+        }
+        return spans.sort((left, right) => left.start - right.start || right.end - left.end)
+      },
+    }
+  }, [textMentions, mentions, hits])
+
+  useEffect(() => {
+    if (streaming || rootRef.current === null) return undefined
+    let timer: any = null
+    const run = (): void => {
+      if (rootRef.current !== null) decorateCodeBlocks(rootRef.current, textMentions, mentions, hits)
+    }
+    const schedule = (): void => {
+      if (timer !== null) clearTimeout(timer)
+      timer = setTimeout(run, 40)
+    }
+    schedule()
+    const observer = new MutationObserver(schedule)
+    observer.observe(rootRef.current, { childList: true, subtree: true })
+    const settle = setTimeout(() => { observer.disconnect(); run() }, 1500)
+    return () => {
+      if (timer !== null) clearTimeout(timer)
+      clearTimeout(settle)
+      observer.disconnect()
+    }
+  }, [streaming, textMentions, textMentionsWithHits, mentions, hits, blocks, ledger])
+
   const coderefLinks = useMemo(() => ({
     open(href: string) {
       const parsed = parseCoderefHref(href)
@@ -1186,7 +1356,7 @@ const CoderefRenderer = memo(function CoderefRenderer(props: any): ReactNode {
         labels,
         fileMentions: streaming ? undefined : mentions,
         coderefLinks: streaming ? undefined : coderefLinks,
-        textMentions: streaming ? undefined : textMentions,
+        textMentions: streaming ? undefined : textMentionsWithHits,
         commandMentions: streaming ? undefined : commandMentions,
         onReferenceContextMenu: streaming ? undefined : showContextMenu,
       }))
@@ -1205,6 +1375,7 @@ const CoderefRenderer = memo(function CoderefRenderer(props: any): ReactNode {
   debug.renders += 1
   return createElement('div', {
     className: 'dcr-root',
+    ref: rootRef,
     'data-coderef-renderer': 'fork',
     ...(streaming ? { 'data-streaming': 'true' } : {}),
   }, createElement('div', { className: 'dcr-body' }, rendered,
@@ -1228,8 +1399,9 @@ class RendererErrorBoundary extends Component<{ fallbackText: string; children?:
   static getDerivedStateFromError(error: any): { error: any } {
     return { error }
   }
-  componentDidCatch(error: any): void {
-    debug.lastError = String(error?.message ?? error)
+  componentDidCatch(error: any, info: any): void {
+    debug.lastError = String(error?.stack ?? error?.message ?? error)
+    debug.lastComponentStack = String(info?.componentStack ?? '')
   }
   render(): ReactNode {
     if (this.state.error !== null) {
