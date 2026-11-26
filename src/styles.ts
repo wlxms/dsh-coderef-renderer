@@ -50,6 +50,10 @@ export const STYLES = [
 				// MarkdownText.fileMention (inline code reference chip)
 				".dcr-file-mention { margin:0; padding:0; border:none; background:none; font:inherit; font-weight:500; color:var(--dsw-alias-link); text-decoration:none; cursor:pointer; }",
 				".dcr-file-mention:hover, .dcr-file-mention:focus { outline:none; text-decoration:underline dotted var(--dsw-alias-link); text-underline-offset:3px; }",
+				".dcr-ref-inline-chip { display:inline-flex; align-items:center; gap:4px; box-sizing:border-box; height:20px; line-height:18px; margin:0 1px; padding:0 6px 0 5px; border:0.5px solid var(--dsw-alias-border-l1); border-radius:999px; background:var(--dsw-alias-bg-secondary,rgba(127,127,127,.05)); color:var(--dsw-alias-link); font:inherit; font-weight:500; vertical-align:baseline; white-space:nowrap; max-width:min(100%,520px); overflow:hidden; text-overflow:ellipsis; }",
+				".dcr-ref-inline-chip:hover, .dcr-ref-inline-chip:focus { background:var(--dsw-alias-interactive-bg-hover); border-color:var(--dsw-alias-border-l2,var(--dsw-alias-border-l1)); text-decoration:none; }",
+				".dcr-ref-inline-chip .dcr-link-icon { width:14px; height:14px; color:var(--dsw-alias-link); }",
+				".dcr-md code.dcr-ref-inline-code { padding:0 !important; border:0 !important; background:none !important; font:inherit !important; }",
 				".dcr-strong-chip { font-weight:600; }",
 				// AssistantMarkdown.stopped
 				".dcr-stopped { align-self:flex-start; padding:0 6px; border-radius:6px; background:var(--dsw-alias-interactive-bg-hover); color:var(--dsw-alias-label-tertiary); font-size:11px; line-height:18px; }",
@@ -115,14 +119,15 @@ export const STYLES = [
 				".dcr-menu button[disabled] { opacity:.45; cursor:default; }",
 				// Command chips + toast: independent pill is fine; explicit zero
 				// margin and a 22px box keep it inside the 24px text line.
-				".dcr-command-chip { display:inline-flex; align-items:center; gap:4px; box-sizing:border-box; height:21px; line-height:19px; margin:0 !important; padding:0 5px !important; border:0.5px solid var(--dsw-alias-border-l1) !important; border-radius:6px; background:var(--dsw-alias-markdown-inline-code) !important; color:var(--dsw-alias-label-primary) !important; font-family:var(--ds-font-family-code) !important; font-size:12.25px !important; vertical-align:baseline; white-space:nowrap; }",
+				".dcr-command-chip { display:inline-flex; align-items:center; gap:4px; box-sizing:border-box; height:20px; line-height:18px; margin:0 1px !important; padding:0 6px 0 5px !important; border:0.5px solid var(--dsw-alias-border-l1) !important; border-radius:999px; background:var(--dsw-alias-markdown-inline-code) !important; color:var(--dsw-alias-label-primary) !important; font-family:var(--ds-font-family-code) !important; font-size:12.25px !important; vertical-align:baseline; white-space:nowrap; }",
 				".dcr-md :not(pre) > code.dcr-command-code { display:inline; margin:0 !important; padding:0 !important; border:0 !important; border-radius:0; background:none !important; font:inherit; line-height:inherit; }",
 				".dcr-command-chip:hover { border-color:var(--dsw-alias-border-l1) !important; background:var(--dsw-alias-interactive-bg-hover) !important; }",
-				".dcr-command-chip .dcr-command-icon { display:inline-block; width:13px; height:13px; vertical-align:middle; margin:0 !important; color:var(--dsw-alias-label-secondary); }",
+				".dcr-command-chip .dcr-command-icon { display:inline-block; width:14px; height:14px; vertical-align:middle; margin:0 !important; color:var(--dsw-alias-label-secondary); }",
 				".dcr-toast { position:fixed; z-index:10000; left:50%; bottom:104px; transform:translateX(-50%); padding:7px 14px; border-radius:999px; border:0.5px solid var(--dsw-alias-border-l1); background:var(--dsw-alias-bg-overlay,var(--dsw-alias-bg-base,#1b1b1c)); color:var(--dsw-alias-label-primary); font-size:12px; box-shadow:0 8px 24px rgba(0,0,0,.24); white-space:nowrap; }",
 				// Sidebar ping
 				".dsh-coderef-line-ping { background:rgba(84,150,255,0.22) !important; box-shadow:inset 3px 0 0 0 rgba(84,150,255,0.9); animation:dsh-coderef-ping 2.4s ease-out 1; }",
 				"pre code > .line.dsh-coderef-line-ping { display:block; }",
 				"@keyframes dsh-coderef-ping { 0% { background:rgba(84,150,255,0.55); } 45% { background:rgba(84,150,255,0.24); } 100% { background:rgba(84,150,255,0.18); } }",
 			].join('\n')
+
 

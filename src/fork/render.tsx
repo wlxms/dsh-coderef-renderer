@@ -314,7 +314,7 @@ function renderChildren(
 /** Bordered terminal-window glyph used by command chips. */
 function CommandPromptIcon(): ReactNode {
   return (
-    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="dcr-command-icon">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="dcr-command-icon">
       <rect x="1.5" y="1.5" width="13" height="13" rx="3" fill="currentColor" fillOpacity="0.14" stroke="currentColor" strokeWidth="1.1" />
       <path d="M4.4 6.1L6.7 8L4.4 9.9" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M8.3 10.2H11.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
@@ -366,7 +366,7 @@ function renderTextMentions(
         <button
           key={`${key}:m${mention.start}`}
           type="button"
-          className={css.fileMention}
+          className={`${css.fileMention} dcr-ref-inline-chip`}
           title={mention.title}
           aria-label={mention.title}
           data-coderef-chip="true"
@@ -382,6 +382,7 @@ function renderTextMentions(
             })
           }}
         >
+          <LinkIcon kind={classifyLinkPath(mention.label)} className={css.linkIcon} />
           {mention.label}
         </button>,
       )
@@ -425,7 +426,7 @@ function renderNode(node: Md.RootContent, key: Key, context: MarkdownRenderConte
           <button
             key={key}
             type="button"
-            className={`${css.fileMention} dcr-strong-chip`}
+            className={`${css.fileMention} dcr-strong-chip dcr-ref-inline-chip`}
             title={mention.title}
             aria-label={mention.label}
             data-coderef-chip="true"
@@ -484,10 +485,10 @@ function renderNode(node: Md.RootContent, key: Key, context: MarkdownRenderConte
       const mention = context.inLink === true ? undefined : context.fileMentions?.resolve(value)
       if (mention !== undefined) {
         return (
-          <code key={key}>
+          <code key={key} className="dcr-ref-inline-code">
             <button
               type="button"
-              className={css.fileMention}
+              className={`${css.fileMention} dcr-ref-inline-chip`}
               title={mention.title}
               aria-label={mention.label}
               data-coderef-chip="true"
@@ -528,17 +529,18 @@ function renderNode(node: Md.RootContent, key: Key, context: MarkdownRenderConte
       if (context.coderefLinks !== undefined && /^coderef:/i.test(node.url)) {
         const links = context.coderefLinks
         const isCommand = /^coderef:cmd:/i.test(node.url)
+        const target = node.url.replace(/^coderef:/i, '').split('#')[0] ?? ''
         return (
           <button
             key={key}
             type="button"
-            className={isCommand ? `${css.fileMention} dcr-command-chip` : css.fileMention}
+            className={isCommand ? `${css.fileMention} dcr-command-chip` : `${css.fileMention} dcr-ref-inline-chip`}
             title={node.url}
             data-coderef-chip="true"
             {...(isCommand ? { 'data-coderef-command': 'true' } : {})}
             onClick={() => links.open(node.url)}
           >
-            {isCommand ? <CommandPromptIcon /> : <LinkIcon kind="code" className={css.linkIcon} />}
+            {isCommand ? <CommandPromptIcon /> : <LinkIcon kind={classifyLinkPath(target)} className={css.linkIcon} />}
             {renderChildren(node.children, { ...context, inLink: true })}
           </button>
         )
