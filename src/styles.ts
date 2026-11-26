@@ -48,13 +48,17 @@ export const STYLES = [
 				".dcr-image-alt { color:var(--dsw-alias-label-tertiary); font-style:italic; }",
 				".dcr-image { display:block; width:auto; max-width:100%; height:auto; margin:0; border-radius:8px; background:var(--dsw-alias-bg-base); object-fit:contain; }",
 				// MarkdownText.fileMention (inline code reference chip)
-				".dcr-file-mention { margin:0; padding:0; border:none; background:none; font:inherit; font-weight:500; color:var(--dsw-alias-link); text-decoration:none; cursor:pointer; }",
+				".dcr-file-mention { margin:0; padding:0; border:none; background:none; font:inherit; font-weight:400; color:var(--dsw-alias-link); text-decoration:none; cursor:pointer; }",
 				".dcr-file-mention:hover, .dcr-file-mention:focus { outline:none; text-decoration:underline dotted var(--dsw-alias-link); text-underline-offset:3px; }",
-				".dcr-ref-inline-chip { display:inline-flex; align-items:center; gap:4px; box-sizing:border-box; height:20px; line-height:18px; margin:0 1px; padding:0 6px 0 5px; border:0.5px solid var(--dsw-alias-border-l1); border-radius:999px; background:var(--dsw-alias-bg-secondary,rgba(127,127,127,.05)); color:var(--dsw-alias-link); font:inherit; font-weight:500; vertical-align:baseline; white-space:nowrap; max-width:min(100%,520px); overflow:hidden; text-overflow:ellipsis; }",
+				".dcr-ref-inline-chip { display:inline-flex; align-items:center; gap:4px; box-sizing:border-box; height:20px; line-height:18px; margin:0 1px; padding:0 6px 0 5px; border:0.5px solid var(--dsw-alias-border-l1); border-radius:999px; background:var(--dsw-alias-bg-base,rgba(127,127,127,.04)); color:var(--dsw-alias-link); font:inherit; font-weight:400; vertical-align:baseline; white-space:nowrap; max-width:min(100%,520px); overflow:hidden; text-overflow:ellipsis; }",
 				".dcr-ref-inline-chip:hover, .dcr-ref-inline-chip:focus { background:var(--dsw-alias-interactive-bg-hover); border-color:var(--dsw-alias-border-l2,var(--dsw-alias-border-l1)); text-decoration:none; }",
 				".dcr-ref-inline-chip .dcr-link-icon { width:14px; height:14px; color:var(--dsw-alias-link); }",
 				".dcr-md code.dcr-ref-inline-code { padding:0 !important; border:0 !important; background:none !important; font:inherit !important; }",
 				".dcr-strong-chip { font-weight:600; }",
+				// A captured **strong** keeps the same single pill, but its
+				// background is one step brighter than an ordinary captured token.
+				".dcr-ref-inline-chip.dcr-strong-chip { background:rgb(41 41 41); border-color:rgba(255,255,255,.12); font-weight:600; }",
+				".dcr-ref-inline-chip.dcr-strong-chip:hover, .dcr-ref-inline-chip.dcr-strong-chip:focus { background:rgb(48 48 48); border-color:rgba(255,255,255,.16); }",
 				// AssistantMarkdown.stopped
 				".dcr-stopped { align-self:flex-start; padding:0 6px; border-radius:6px; background:var(--dsw-alias-interactive-bg-hover); color:var(--dsw-alias-label-tertiary); font-size:11px; line-height:18px; }",
 				// ReasoningRow
