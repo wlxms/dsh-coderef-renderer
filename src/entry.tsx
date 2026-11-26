@@ -327,11 +327,29 @@ function pingLine(line: number, endLine?: number): void {
   attempt()
 }
 
+/** Broadcast open progress so every entry point can show one shared spinner. */
+const OPEN_PROGRESS_EVENT = 'dsh-coderef:open-progress'
+const OPEN_FEEDBACK_MIN_MS = 350
+
+function emitOpenProgress(active: boolean, file: string, line?: number): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.dispatchEvent(new CustomEvent(OPEN_PROGRESS_EVENT, { detail: { active, file, line } }))
+  } catch { /* non-browser test double */ }
+}
+
 /** Left click: sidebar preview + line ping only. IDE is an explicit context-menu action. */
 async function openReference(props: any, hit: any): Promise<void> {
   const file = hit.file
   const line = hit.line
+  const startedAt = Date.now()
   let previewOpened = false
+  emitOpenProgress(true, file, line)
+  // Let React paint the spinner before the sidebar starts reading the file.
+  await new Promise<void>(resolve => {
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => resolve())
+    else setTimeout(resolve, 0)
+  })
   try {
     if (typeof props?.openFile === 'function') {
       await props.openFile(file, { line })
@@ -340,6 +358,12 @@ async function openReference(props: any, hit: any): Promise<void> {
     }
   } catch (error: any) {
     debug.lastError = String(error?.message ?? error)
+  } finally {
+    // Keep the spinner visible long enough to read even when the preview stub
+    // resolves immediately; the user should never see a dead click.
+    const remaining = OPEN_FEEDBACK_MIN_MS - (Date.now() - startedAt)
+    if (remaining > 0) await new Promise<void>(resolve => setTimeout(resolve, remaining))
+    emitOpenProgress(false, file, line)
   }
   debug.lastOpen = { file, line, previewOpened, ideOpened: false, at: Date.now() }
 }
@@ -544,7 +568,9 @@ function decorateCodeBlocks(
   mentions: MarkdownFileMentions,
   hits: Map<string, any>,
 ): void {
-  const blocks = root.querySelectorAll<HTMLElement>('pre code')
+  // Long answers can contain hundreds of code blocks. The resolver only knows
+  // the first 160 identifiers anyway, so decorating every block is wasted work.
+  const blocks = [...root.querySelectorAll<HTMLElement>('pre code')].slice(0, 24)
   for (const code of blocks) {
     const walker = document.createTreeWalker(code, NodeFilter.SHOW_TEXT)
     const textNodes: Text[] = []
@@ -553,6 +579,7 @@ function decorateCodeBlocks(
       const parent = current.parentElement
       if (parent !== null && parent.closest('[data-coderef-chip]') === null) textNodes.push(current as Text)
       current = walker.nextNode()
+      if (textNodes.length >= 500) break
     }
     for (const textNode of textNodes) {
       const value = textNode.nodeValue ?? ''
@@ -785,8 +812,7 @@ function createTextMatcher(ledger: any, cwd: string | undefined, props: any, run
     if (list === undefined) fileByAlias.set(key, [ref])
     else if (!list.includes(ref)) list.push(ref)
   }
-  for (const ref of ledger?.refs?.files ?? []) {
-    if (ref.visible !== true) continue
+  for (const ref of (ledger?.refs?.files ?? []).filter((item: any) => item.visible === true).slice(0, 160)) {
     const absNorm = normalizeMatchPath(ref.absPath ?? ref.path)
     addFileAlias(absNorm, ref)
     addFileAlias(normalizeMatchPath(ref.path), ref)
@@ -1034,17 +1060,83 @@ function commandDisplayLabel(command: string): string {
   return firstLine.length > 96 ? `${firstLine.slice(0, 93)}…` : firstLine
 }
 
-/** Small local glyph so the footer does not depend on a primitives export. */
-function RefGlyph(props: { kind?: string }): ReactNode {
-  return createElement('span', {
-    className: 'dcr-link-icon',
+/** Inline vector icons: no ASCII glyphs, so every row shares one optical size. */
+function svgIcon(className: string, paths: ReactNode[]): ReactNode {
+  return createElement('svg', {
+    className,
+    viewBox: '0 0 16 16',
+    width: 14,
+    height: 14,
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.35,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
     'aria-hidden': 'true',
-    style: { display: 'inline-block', width: '11px', height: '11px', lineHeight: '11px', textAlign: 'center' },
-  }, props.kind === 'url' ? '↗' : '›')
+    focusable: 'false',
+  }, ...paths)
+}
+
+function CodeRefIcon(): ReactNode {
+  return svgIcon('dcr-ref-icon', [
+    createElement('path', { key: 'left', d: 'M5.1 4.3 1.9 8l3.2 3.7' }),
+    createElement('path', { key: 'right', d: 'm10.9 4.3 3.2 3.7-3.2 3.7' }),
+    createElement('path', { key: 'slash', d: 'M9.2 2.8 6.8 13.2' }),
+  ])
+}
+
+function FileRefIcon(): ReactNode {
+  return svgIcon('dcr-ref-icon', [
+    createElement('path', { key: 'page', d: 'M4 1.9h5.1L12 4.8v9.3H4z' }),
+    createElement('path', { key: 'fold', d: 'M9.1 1.9v3h2.9' }),
+  ])
+}
+
+function TerminalRefIcon(): ReactNode {
+  return svgIcon('dcr-ref-icon', [
+    createElement('rect', { key: 'frame', x: 1.8, y: 2.8, width: 12.4, height: 10.4, rx: 2.2 }),
+    createElement('path', { key: 'prompt', d: 'm4.7 6 2.1 2-2.1 2' }),
+    createElement('path', { key: 'cursor', d: 'M8.9 10h2.7' }),
+  ])
+}
+
+function LinkRefIcon(): ReactNode {
+  return svgIcon('dcr-ref-icon', [
+    createElement('path', { key: 'box', d: 'M9.2 2.7h4.1v4.1' }),
+    createElement('path', { key: 'arrow', d: 'm13.2 2.8-5.6 5.6' }),
+    createElement('path', { key: 'tail', d: 'M11.3 9.1v3.1H2.8V3.9h3.1' }),
+  ])
+}
+
+function ChevronRefIcon(): ReactNode {
+  return svgIcon('dcr-ref-chevron', [
+    createElement('path', { key: 'chevron', d: 'm6 3.5 4.5 4.5L6 12.5' }),
+  ])
+}
+
+function SpinnerRefIcon(): ReactNode {
+  return svgIcon('dcr-ref-spinner', [
+    createElement('circle', { key: 'track', cx: 8, cy: 8, r: 5.4, opacity: 0.25 }),
+    createElement('path', { key: 'arc', d: 'M8 2.6a5.4 5.4 0 0 1 5.4 5.4' }),
+  ])
+}
+
+/** Pick an icon by reference type, not by an ASCII glyph. */
+function RefGlyph(props: { kind?: string }): ReactNode {
+  if (props.kind === 'url') return createElement(LinkRefIcon)
+  if (props.kind === 'terminal') return createElement(TerminalRefIcon)
+  if (props.kind === 'file') return createElement(FileRefIcon)
+  return createElement(CodeRefIcon)
+}
+
+const SOURCE_FILE_RE = /\.(?:tsx?|jsx?|mjs|cjs|cs|py|go|rs|java|kt|rb|php|swift|scala|lua|sh|ps1)$/i
+
+function refIconKind(ref: any): 'code' | 'file' {
+  return SOURCE_FILE_RE.test(String(ref?.absPath ?? ref?.path ?? '')) ? 'code' : 'file'
 }
 
 /** Collapsed listing of references that actually appeared in assistant prose. */
-function RefsFooter({ ledger, cwd, props, onContextMenu, onRunCommand }: {
+const RefsFooter = memo(function RefsFooter({ ledger, cwd, props, onContextMenu, onRunCommand }: {
   ledger: any
   cwd: string | undefined
   props: any
@@ -1054,10 +1146,15 @@ function RefsFooter({ ledger, cwd, props, onContextMenu, onRunCommand }: {
   const files: any[] = (ledger?.refs?.files ?? []).filter((ref: any) => ref.visible === true)
   const urls: any[] = (ledger?.refs?.urls ?? []).filter((ref: any) => ref.visible === true)
   const commands: any[] = (ledger?.refs?.commands ?? []).filter((ref: any) => ref.visible === true)
+  const [opening, setOpening] = useState<string | null>(null)
   if (files.length === 0 && urls.length === 0 && commands.length === 0) return null
   const sortedFiles = [...files].sort((a, b) => (b.visibleSeqs?.at(-1) ?? 0) - (a.visibleSeqs?.at(-1) ?? 0))
+  const shownFiles = sortedFiles.slice(0, 60)
+  const shownUrls = urls.slice(0, 20)
+  const shownCommands = commands.slice(0, 30)
   const countBadge = (count: number, suffix: string) => createElement('span', {
-    style: { fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)' },
+    className: 'dcr-ref-count',
+    'data-count': count,
   }, `${count} ${suffix}`)
   const group = (key: string, title: string, count: number, children: ReactNode[]) => createElement('details', {
     key,
@@ -1065,55 +1162,86 @@ function RefsFooter({ ledger, cwd, props, onContextMenu, onRunCommand }: {
     open: true,
   },
   createElement('summary', { className: 'dcr-ref-group-summary' },
-    createElement('span', null, title),
+    createElement(ChevronRefIcon),
+    createElement('span', { className: 'dcr-ref-group-title' }, title),
     countBadge(count, '')),
   createElement('div', { className: 'dcr-ref-group-body' }, ...children))
+
+  const openItem = async (key: string, open: () => Promise<void>): Promise<void> => {
+    if (opening !== null) return
+    setOpening(key)
+    try { await open() } finally { setOpening(null) }
+  }
+  const fileItem = (ref: any, index: number): ReactNode => {
+    const line = ref.lines?.[0]?.start
+    const label = relativeForFooter(ref.absPath ?? ref.path, cwd)
+    const sources = [...new Set((ref.occurrences ?? []).map((occ: any) => occ.source))].join('/')
+    const target = { file: ref.absPath ?? ref.path, line: line ?? 1, title: label }
+    const key = `f:${ref.absPath ?? ref.path}:${index}`
+    const busy = opening === key
+    return createElement('div', { key, className: `dcr-ref-item dcr-ref-item-${refIconKind(ref)}` },
+      createElement('button', {
+        type: 'button',
+        title: ref.absPath ?? ref.path,
+        'aria-busy': busy ? 'true' : undefined,
+        onClick: () => { void openItem(key, () => openReference(props, { file: ref.absPath ?? ref.path, line: line ?? 1 })) },
+        onContextMenu: (event: any) => { event.preventDefault(); onContextMenu(event, target) },
+        className: 'dcr-ref-link',
+      },
+      busy ? createElement(SpinnerRefIcon) : createElement(RefGlyph, { kind: refIconKind(ref) }),
+      createElement('span', { className: 'dcr-ref-label' }, label + (line === undefined ? '' : `:${line}`))),
+      createElement('span', { className: 'dcr-ref-meta' },
+        [sources, ref.occurrences?.length > 1 ? `${ref.occurrences.length} 次` : ''].filter(Boolean).join(' · ')))
+  }
+
   return createElement('details', { className: 'dcr-refs', 'data-coderef-refs': 'true' },
-    createElement('summary', null,
-      createElement('span', { style: { fontWeight: 500 } }, '引用'),
-      countBadge(files.length, '文件'),
-      urls.length > 0 ? countBadge(urls.length, '链接') : null,
-      commands.length > 0 ? countBadge(commands.length, '命令') : null),
+    createElement('summary', { className: 'dcr-refs-summary' },
+      createElement(ChevronRefIcon),
+      createElement('span', { className: 'dcr-refs-title' }, '引用'),
+      createElement('span', { className: 'dcr-refs-counts' },
+        countBadge(files.length, '文件'),
+        urls.length > 0 ? countBadge(urls.length, '链接') : null,
+        commands.length > 0 ? countBadge(commands.length, '命令') : null)),
     createElement('div', { className: 'dcr-refs-body' },
-      files.length > 0 ? group('files', '文件', files.length, sortedFiles.map(ref => {
-        const line = ref.lines?.[0]?.start
-        const label = relativeForFooter(ref.absPath ?? ref.path, cwd)
-        const sources = [...new Set((ref.occurrences ?? []).map((occ: any) => occ.source))].join('/')
-        const target = { file: ref.absPath ?? ref.path, line: line ?? 1, title: label }
-        return createElement('div', { key: `f:${ref.absPath ?? ref.path}`, className: 'dcr-ref-item' },
+      files.length > 0 ? group('files', '文件', files.length, [
+        ...shownFiles.map(fileItem),
+        files.length > shownFiles.length
+          ? createElement('div', { key: 'files-more', className: 'dcr-ref-more' }, `还有 ${files.length - shownFiles.length} 个文件`)
+          : null,
+      ]) : null,
+      urls.length > 0 ? group('urls', '链接', urls.length, [
+        ...shownUrls.map(ref => createElement('div', { key: `u:${ref.canonical}`, className: 'dcr-ref-item dcr-ref-item-url' },
           createElement('button', {
             type: 'button',
-            title: ref.absPath ?? ref.path,
-            onClick: () => { void openReference(props, { file: ref.absPath ?? ref.path, line: line ?? 1 }) },
-            onContextMenu: (event: any) => { event.preventDefault(); onContextMenu(event, target) },
+            title: ref.url,
+            className: 'dcr-ref-link',
+            onClick: () => {
+              if (typeof window !== 'undefined') window.open(ref.url, '_blank', 'noopener,noreferrer')
+            },
           },
-          createElement(RefGlyph, { kind: 'code' }),
-          label + (line === undefined ? '' : `:${line}`)),
-          createElement('span', { className: 'dcr-ref-meta' },
-            [sources, ref.occurrences?.length > 1 ? `${ref.occurrences.length} 次` : ''].filter(Boolean).join(' · ')))
-      })) : null,
-      urls.length > 0 ? group('urls', '链接', urls.length, urls.map(ref => createElement('div', { key: `u:${ref.canonical}`, className: 'dcr-ref-item' },
-        createElement('button', {
-          type: 'button',
-          title: ref.url,
-          onClick: () => {
-            if (typeof window !== 'undefined') window.open(ref.url, '_blank', 'noopener,noreferrer')
+          createElement(RefGlyph, { kind: 'url' }),
+          createElement('span', { className: 'dcr-ref-label' }, ref.title ?? ref.url)),
+          createElement('span', { className: 'dcr-ref-meta' }, 'web'))),
+        urls.length > shownUrls.length
+          ? createElement('div', { key: 'urls-more', className: 'dcr-ref-more' }, `还有 ${urls.length - shownUrls.length} 个链接`)
+          : null,
+      ]) : null,
+      commands.length > 0 ? group('commands', '命令', commands.length, [
+        ...shownCommands.map(ref => createElement('div', { key: `c:${ref.command}`, className: 'dcr-ref-item dcr-ref-item-terminal' },
+          createElement('button', {
+            type: 'button',
+            title: `点击填入侧边栏终端（不执行）\n${ref.command}`,
+            onClick: () => onRunCommand(ref.command),
+            className: 'dcr-ref-link dcr-command-row',
           },
-        },
-        createElement(RefGlyph, { kind: 'url' }),
-        ref.title ?? ref.url),
-        createElement('span', { className: 'dcr-ref-meta' }, 'web')))) : null,
-      commands.length > 0 ? group('commands', '命令', commands.length, commands.map(ref => createElement('div', { key: `c:${ref.command}`, className: 'dcr-ref-item' },
-        createElement('button', {
-          type: 'button',
-          title: `点击填入侧边栏终端（不执行）\n${ref.command}`,
-          onClick: () => onRunCommand(ref.command),
-          className: 'dcr-command-row',
-        },
-        createElement(RefGlyph, { kind: 'code' }),
-        commandDisplayLabel(ref.command)),
-        createElement('span', { className: 'dcr-ref-meta' }, ref.command.length > 96 ? 'terminal · long' : 'terminal')))) : null))
-}
+          createElement(RefGlyph, { kind: 'terminal' }),
+          createElement('span', { className: 'dcr-ref-label' }, commandDisplayLabel(ref.command))),
+          createElement('span', { className: 'dcr-ref-meta' }, ref.command.length > 96 ? 'terminal · long' : 'terminal'))),
+        commands.length > shownCommands.length
+          ? createElement('div', { key: 'commands-more', className: 'dcr-ref-more' }, `还有 ${commands.length - shownCommands.length} 个命令`)
+          : null,
+      ]) : null))
+})
 
 // ───────────────────────── assistant renderer ─────────────────────────
 const CoderefRenderer = memo(function CoderefRenderer(props: any): ReactNode {
@@ -1137,6 +1265,7 @@ const CoderefRenderer = memo(function CoderefRenderer(props: any): ReactNode {
   const [ledger, setLedger] = useState<any>(null)
   const [menu, setMenu] = useState<any>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [openingFile, setOpeningFile] = useState<string | null>(null)
   const toastTimer = useRef<any>(null)
   const lastKeyRef = useRef('')
   const tokens = useMemo(() => collectTokens(blocks), [blocks])
@@ -1155,6 +1284,17 @@ const CoderefRenderer = memo(function CoderefRenderer(props: any): ReactNode {
     if (resolveRetryTimer.current !== null) clearTimeout(resolveRetryTimer.current)
     toastTimer.current = null
     resolveRetryTimer.current = null
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const onProgress = (event: Event): void => {
+      const detail = (event as CustomEvent).detail
+      if (detail === null || typeof detail !== 'object') return
+      setOpeningFile(detail.active === true && typeof detail.file === 'string' ? detail.file : null)
+    }
+    window.addEventListener(OPEN_PROGRESS_EVENT, onProgress)
+    return () => window.removeEventListener(OPEN_PROGRESS_EVENT, onProgress)
   }, [])
 
   const runCommand = useCallback((command: string): Promise<void> => {
@@ -1424,6 +1564,17 @@ const CoderefRenderer = memo(function CoderefRenderer(props: any): ReactNode {
   menu === null
     ? null
     : createElement(ReferenceMenu, { menu, props, onClose: () => setMenu(null) }),
+  openingFile === null
+    ? null
+    : createElement('div', {
+      className: 'dcr-open-indicator',
+      'data-coderef-opening': 'true',
+      role: 'status',
+      'aria-live': 'polite',
+    },
+    createElement(SpinnerRefIcon),
+    createElement('span', { className: 'dcr-open-label' },
+      `正在打开 ${String(openingFile).split(/[\\/]/).pop() ?? '文件'}…`)),
   toast === null
     ? null
     : createElement('div', { className: 'dcr-toast', 'data-coderef-toast': 'true', role: 'status' }, toast))
