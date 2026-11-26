@@ -674,9 +674,41 @@ function normalizeSnippetText(value: string): string {
     .trim()
 }
 
-/** Resolve a coderef-relative file against the Session cwd. */
-function absoluteRefFile(file: string, cwd: string | undefined): string {
-  if (cwd === undefined || cwd === '' || /^(?:[A-Za-z]:[\\/]|\\\\|\/)/.test(file)) return file
+/** Find a real absolute file already present in the ledger by suffix. */
+function knownLedgerFile(needle: string, ledger?: any, relativeOnly = false): string | undefined {
+  let known: string | undefined
+  for (const ref of ledger?.refs?.files ?? []) {
+    if (relativeOnly && typeof ref?.path === 'string' && /^(?:[A-Za-z]:[\\/]|\\\\|\/)/.test(ref.path)) continue
+    const candidate = typeof ref?.absPath === 'string' ? ref.absPath : typeof ref?.path === 'string' ? ref.path : ''
+    if (candidate === '') continue
+    const normalized = candidate.replace(/\\/g, '/').toLowerCase()
+    if (normalized !== needle && !normalized.endsWith(`/${needle}`)) continue
+    if (known === undefined || candidate.length < known.length) known = candidate
+  }
+  return known
+}
+
+/** Resolve a coderef-relative file against Session cwd, preferring a real file the ledger already knows. */
+function absoluteRefFile(file: string, cwd: string | undefined, ledger?: any): string {
+  const normalizedFile = file.replace(/\\/g, '/').replace(/^\.\/+/, '')
+  if (cwd === undefined || cwd === '' || /^(?:[A-Za-z]:[\\/]|\\\\|\/)/.test(file)) {
+    // A resolver can still hand back "<cwd>/<relative>" for an external file.
+    // If that fabricated absolute path is not itself in the ledger, retry the
+    // same suffix against the files the session really touched.
+    const root = cwd === undefined ? '' : cwd.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+    const normalized = normalizedFile.toLowerCase()
+    if (root !== '' && (normalized === root || normalized.startsWith(`${root}/`))) {
+      const rel = normalized === root ? '' : normalized.slice(root.length + 1)
+      if (rel !== '') {
+        const known = knownLedgerFile(rel, ledger, true)
+        if (known !== undefined) return known
+      }
+    }
+    return file
+  }
+  const needle = normalizedFile.toLowerCase()
+  const known = knownLedgerFile(needle, ledger)
+  if (known !== undefined) return known
   const separator = cwd.includes('\\') ? '\\' : '/'
   const relative = file.replace(/^[\\/]+/, '').replace(/[\\/]/g, separator)
   return `${cwd.replace(/[\\/]+$/, '')}${separator}${relative}`
@@ -1242,13 +1274,13 @@ const CoderefRenderer = memo(function CoderefRenderer(props: any): ReactNode {
       return {
         label: hit.file,
         title: formatTitle(hit),
-        file: hit.file,
+        file: absoluteRefFile(hit.file, cwd, ledger),
         line: hit.line,
         endLine: hit.endLine,
-        open: () => { void openReference(props, hit) },
+        open: () => { void openReference(props, { ...hit, file: absoluteRefFile(hit.file, cwd, ledger) }) },
       }
     },
-  }), [hits, snippets, props])
+  }), [hits, snippets, props, cwd, ledger])
 
   const rootRef = useRef<HTMLDivElement>(null)
   const textMentionsWithHits = useMemo<MarkdownTextMentions | undefined>(() => {
@@ -1333,7 +1365,7 @@ const CoderefRenderer = memo(function CoderefRenderer(props: any): ReactNode {
         }
         return
       }
-      void openReference(props, { ...parsed, file: absoluteRefFile(parsed.file, cwd) })
+      void openReference(props, { ...parsed, file: absoluteRefFile(parsed.file, cwd, ledger) })
     },
   }), [props, ledger, cwd, runCommand])
 
@@ -1478,3 +1510,4 @@ export function __resetState(): void {
 
 export const name = PLUGIN_ID
 export const version = VERSION
+
