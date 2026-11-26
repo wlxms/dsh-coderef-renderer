@@ -700,7 +700,11 @@ function absoluteRefFile(file: string, cwd: string | undefined, ledger?: any): s
     if (root !== '' && (normalized === root || normalized.startsWith(`${root}/`))) {
       const rel = normalized === root ? '' : normalized.slice(root.length + 1)
       if (rel !== '') {
-        const known = knownLedgerFile(rel, ledger, true)
+        const exact = (ledger?.refs?.files ?? []).some((ref: any) => {
+          const candidate = typeof ref?.absPath === 'string' ? ref.absPath : ''
+          return candidate.replace(/\\/g, '/').toLowerCase() === normalized
+        })
+        const known = exact ? undefined : knownLedgerFile(rel, ledger)
         if (known !== undefined) return known
       }
     }
