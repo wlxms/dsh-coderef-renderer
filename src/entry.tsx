@@ -774,7 +774,7 @@ function createTextMatcher(ledger: any, cwd: string | undefined, props: any, run
   const symbolByName = new Map<string, any[]>()
   const urlByCanonical = new Map<string, any>()
   const commands: any[] = (ledger?.refs?.commands ?? [])
-    .filter((ref: any) => typeof ref?.command === 'string' && ref.command.length >= 4)
+    .filter((ref: any) => ref.visible === true && typeof ref?.command === 'string' && ref.command.length >= 4)
     .sort((a: any, b: any) => b.command.length - a.command.length)
   const cwdNorm = cwd === undefined ? undefined : normalizeMatchPath(cwd).replace(/\/+$/, '')
 
@@ -786,6 +786,7 @@ function createTextMatcher(ledger: any, cwd: string | undefined, props: any, run
     else if (!list.includes(ref)) list.push(ref)
   }
   for (const ref of ledger?.refs?.files ?? []) {
+    if (ref.visible !== true) continue
     const absNorm = normalizeMatchPath(ref.absPath ?? ref.path)
     addFileAlias(absNorm, ref)
     addFileAlias(normalizeMatchPath(ref.path), ref)
@@ -797,6 +798,7 @@ function createTextMatcher(ledger: any, cwd: string | undefined, props: any, run
     for (let count = 2; count <= Math.min(4, parts.length); count += 1) addFileAlias(parts.slice(-count).join('/'), ref)
   }
   for (const ref of ledger?.refs?.symbols ?? []) {
+    if (ref.visible !== true) continue
     if (typeof ref.name !== 'string') continue
     const list = symbolByName.get(ref.name)
     if (list === undefined) symbolByName.set(ref.name, [ref])
@@ -1514,4 +1516,5 @@ export function __resetState(): void {
 
 export const name = PLUGIN_ID
 export const version = VERSION
+
 
