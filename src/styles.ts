@@ -50,10 +50,10 @@ export const STYLES = [
 				// MarkdownText.fileMention (inline code reference chip)
 				".dcr-file-mention { margin:0; padding:0; border:none; background:none; font:inherit; font-weight:400; color:var(--dsw-alias-link); text-decoration:none; cursor:pointer; }",
 				".dcr-file-mention:hover, .dcr-file-mention:focus { outline:none; text-decoration:underline dotted var(--dsw-alias-link); text-underline-offset:3px; }",
-				".dcr-ref-inline-chip { display:inline-flex; align-items:center; gap:4px; box-sizing:border-box; height:20px; line-height:18px; margin:0 1px; padding:0 6px; border:0.5px solid var(--dsw-alias-border-l1); border-radius:7px; background:var(--dsw-alias-bg-base,rgba(127,127,127,.04)); color:var(--dsw-alias-link); font:inherit; font-size:0.875em; font-weight:400; vertical-align:baseline; white-space:nowrap; max-width:min(100%,520px); overflow:hidden; text-overflow:ellipsis; }",
+				".dcr-ref-inline-chip { display:inline-flex; align-items:center; gap:4px; box-sizing:border-box; height:20px; line-height:18px; margin:0 1px; padding:0 6px; border:0.5px solid var(--dsw-alias-border-l1); border-radius:7px; background:var(--dsw-alias-bg-base,rgba(127,127,127,.04)); color:var(--dsw-alias-link); font:inherit; font-size:0.875em; font-weight:400; vertical-align:middle; white-space:nowrap; max-width:min(100%,520px); overflow:hidden; text-overflow:ellipsis; }",
 				".dcr-ref-inline-chip:hover, .dcr-ref-inline-chip:focus { background:var(--dsw-alias-interactive-bg-hover); border-color:var(--dsw-alias-border-l2,var(--dsw-alias-border-l1)); text-decoration:none; }",
 				".dcr-ref-inline-chip .dcr-link-icon { width:14px; height:14px; color:var(--dsw-alias-link); }",
-				".dcr-md code.dcr-ref-inline-code { padding:0 !important; border:0 !important; background:none !important; font:inherit !important; }",
+				".dcr-md code.dcr-ref-inline-code { display:inline-flex; align-items:center; vertical-align:middle; padding:0 !important; border:0 !important; background:none !important; font:inherit !important; }",
 				".dcr-strong-chip { font-weight:600; }",
 				// A captured **strong** keeps the same single pill, but its
 				// background is one step brighter than an ordinary captured token.
@@ -123,7 +123,7 @@ export const STYLES = [
 				".dcr-menu button[disabled] { opacity:.45; cursor:default; }",
 				// Command chips + toast: independent pill is fine; explicit zero
 				// margin and a 22px box keep it inside the 24px text line.
-				".dcr-command-chip { display:inline-flex; align-items:center; gap:4px; box-sizing:border-box; height:20px; line-height:18px; margin:0 1px !important; padding:0 6px !important; border:0.5px solid var(--dsw-alias-border-l1) !important; border-radius:7px; background:var(--dsw-alias-bg-base,rgba(127,127,127,.04)) !important; color:var(--dsw-alias-label-primary) !important; font-family:var(--ds-font-family-code) !important; font-size:0.875em !important; font-weight:400 !important; vertical-align:baseline; white-space:nowrap; }",
+				".dcr-command-chip { display:inline-flex; align-items:center; gap:4px; box-sizing:border-box; height:20px; line-height:18px; margin:0 1px !important; padding:0 6px !important; border:0.5px solid var(--dsw-alias-border-l1) !important; border-radius:7px; background:var(--dsw-alias-bg-base,rgba(127,127,127,.04)) !important; color:var(--dsw-alias-label-primary) !important; font-family:var(--ds-font-family-code) !important; font-size:0.875em !important; font-weight:400 !important; vertical-align:middle; white-space:nowrap; }",
 				".dcr-md :not(pre) > code.dcr-command-code { display:inline; margin:0 !important; padding:0 !important; border:0 !important; border-radius:0; background:none !important; font:inherit; line-height:inherit; }",
 				".dcr-command-chip:hover { border-color:var(--dsw-alias-border-l1) !important; background:var(--dsw-alias-interactive-bg-hover) !important; }",
 				".dcr-command-chip .dcr-command-icon { display:inline-block; width:14px; height:14px; vertical-align:middle; margin:0 !important; color:var(--dsw-alias-label-secondary); }",
@@ -133,5 +133,6 @@ export const STYLES = [
 				"pre code > .line.dsh-coderef-line-ping { display:block; }",
 				"@keyframes dsh-coderef-ping { 0% { background:rgba(84,150,255,0.55); } 45% { background:rgba(84,150,255,0.24); } 100% { background:rgba(84,150,255,0.18); } }",
 			].join('\n')
+
 
 
